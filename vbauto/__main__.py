@@ -66,7 +66,7 @@ def shutdown():
 
 
 @app.command()
-def setup(ssh: bool = True, headless: bool = True):
+def startup(ssh: bool = True, headless: bool = True):
     choice = get_choice(
         subprocess.check_output(
             "vboxmanage list vms", shell=True, universal_newlines=True
@@ -102,17 +102,28 @@ def setup(ssh: bool = True, headless: bool = True):
     if ssh:
         username = console.input("[red] Enter your username: [/red] ")
         pprint("[blue]Waiting for SSH to be available...[/blue]")
-        time.sleep(5)
-        ssh_result = ssh_wait(ip, service=22)
-        if ssh_result == 0:
-            # SSH into the container
-            pprint("[blue]=> SSH available! Logging in...[/blue]")
-            os.execlp("ssh", "-oStrictHostKeyChecking=no", "-X", f"{username}@{ip}")
-        else:
-            pprint(
-                "[red]: FAILURE! [/red] Timeout waiting for SSH to available in the VM, check if SSH service is available in the VM and the IP is reachable"
-            )
-            exit(-1)
+        while True:
+            ip = (
+                (
+                    subprocess.check_output(
+                        f'vboxmanage guestproperty get {choice} "/VirtualBox/GuestInfo/Net/0/V4/IP"',
+                        shell=True,
+                        universal_newlines=True,
+                    )
+                    .split(" ")[1]
+                    .replace("\n", "")
+                ),
+            )[0]
+            ssh_result = ssh_wait(ip, service=22,wait_limit=15)
+            if ssh_result == 0:
+                # SSH into the container
+                pprint("[blue]=> SSH available! Logging in...[/blue]")
+                os.execlp("ssh", "-oStrictHostKeyChecking=no", "-Y", f"{username}@{ip}")
+            else:
+                pprint(
+                    "[red]: FAILURE! [/red] Timeout waiting for SSH to available in the VM, retrying..."
+                )
+
     else:
         pprint(
             f"SSH is [red]disabled[/red], but you can interact with the machine at {ip}"
